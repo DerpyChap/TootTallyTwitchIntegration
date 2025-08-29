@@ -11,6 +11,7 @@ using TootTallyCore.Utils.Helpers;
 using TootTallyCore.Utils.TootTallyNotifs;
 using UnityEngine.UI;
 using System;
+using static TootTallyTwitchIntegration.RequestPanelManager;
 
 namespace TootTallyTwitchIntegration
 {
@@ -22,10 +23,10 @@ namespace TootTallyTwitchIntegration
         private GameObject _downloadButton;
         private ProgressBar _progressBar;
         private TracksLoaderListener _reloadListener;
-        public Plugin.Request request { get; private set; }
+        public Request request { get; private set; }
         private SerializableClass.SongDataFromDB _chart;
 
-        public RequestPanelRow(Transform canvasTransform, Plugin.Request request)
+        public RequestPanelRow(Transform canvasTransform, Request request)
         {
             _chart = request.songData;
             this.request = request;
@@ -69,7 +70,7 @@ namespace TootTallyTwitchIntegration
 
         public void PlayChart()
         {
-            RequestPanelManager.currentSongID = request.song_id;
+            RequestPanelManager._currentSongID = request.songID;
             RequestPanelManager.SetTrackToTrackref(_chart.track_ref);
         }
 

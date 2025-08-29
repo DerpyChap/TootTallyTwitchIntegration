@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net472</TargetFramework>
+    <TargetFramework>net48</TargetFramework>
     <AssemblyName>TootTallyTwitchIntegration</AssemblyName>
     <Description>Twitch integration with song requests and more</Description>
     <Version>1.1.0</Version>
@@ -31,6 +31,12 @@
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.2" PrivateAssets="all" />
   </ItemGroup>
 
+    <ItemGroup>
+	    <Reference Include="TootTallyTwitchLibs">
+		    <HintPath>$(TromboneTootDir)\BepInEx\plugins\TootTally-TootTallyTwitchLibs\TootTallyTwitchLibs.dll</HintPath>
+	    </Reference>
+    </ItemGroup>
+	
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(TromboneTootDir)\BepInEx\plugins\TootTally-TootTallyTwitchIntegration" />
   </Target>
@@ -44,7 +50,6 @@
     <Copy SourceFiles="README.md" DestinationFolder="$(OutDir)thunderstore" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(OutDir)thunderstore/plugins" />
     <Copy SourceFiles="@(Assets)" DestinationFolder="$(OutDir)thunderstore/plugins/Assets" />
-    <Copy SourceFiles="@(TwitchLib)" DestinationFolder="$(OutDir)thunderstore/plugins/TwitchLib" />
     <MakeDir Directories="$(OutDir)thunderstore/plugins/Downloads" />
     <ZipDirectory DestinationFile="$(SolutionDir)$(ProjectName).zip" SourceDirectory="$(OutDir)thunderstore" />
   </Target>

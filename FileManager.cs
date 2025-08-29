@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using static TootTallyTwitchIntegration.Plugin;
+using static TootTallyTwitchIntegration.RequestPanelManager;
 
 namespace TootTallyTwitchIntegration
 {

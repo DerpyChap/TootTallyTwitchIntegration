@@ -1,25 +1,30 @@
-using UnityEngine;
-using UnityEngine.UI;
+using BaboonAPI.Hooks.Tracks;
+using HarmonyLib;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using static TootTallyTwitchIntegration.Plugin;
+using TootTallyCore.APIServices;
 using TootTallyCore.Graphics;
 using TootTallyCore.Graphics.Animations;
+using TootTallyCore.Utils.Helpers;
 using TootTallyCore.Utils.TootTallyNotifs;
+using TrombLoader.CustomTracks;
+using UnityEngine;
+using UnityEngine.UI;
 
 namespace TootTallyTwitchIntegration
 {
     public static class RequestPanelManager
     {
         public static GameObject requestRowPrefab;
-        public static LevelSelectController songSelectInstance;
-        public static int songIndex;
-        public static bool isPlaying;
+        public static LevelSelectController _songSelectInstance;
+        public static int _songIndex;
+        public static bool _isPlaying;
         private static List<RequestPanelRow> _requestRowList;
         private static List<Request> _requestList;
         private static List<BlockedRequests> _blockedList;
         private static List<int> _songIDHistory;
-        public static int currentSongID;
+        public static int _currentSongID;
         public static int RequestCount => _requestList.Count;
 
         private static ScrollableSliderHandler _scrollableHandler;
@@ -31,7 +36,7 @@ namespace TootTallyTwitchIntegration
         private static GameObject _overlayPanel;
         private static GameObject _overlayCanvas;
         private static GameObject _overlayPanelContainer;
-        private static bool _isPanelActive;
+        public static bool IsPanelActive;
         private static bool _isInitialized;
         private static bool _isAnimating;
         public static void Initialize()
@@ -87,49 +92,102 @@ namespace TootTallyTwitchIntegration
             _requestList.ForEach(AddRowFromFile);
             _blockedList = FileManager.GetBlockedRequestsFromFile();
 
-            _isPanelActive = false;
+            IsPanelActive = false;
             _isInitialized = true;
-            isPlaying = false;
-        }
-
-        public static void Update()
-        {
-            if (!_isInitialized) return; //just in case
-
-            if (Input.GetKeyDown(Plugin.Instance.ToggleRequestPanel.Value))
-                TogglePanel();
-
-            if (Input.GetKeyDown(KeyCode.Escape) && _isPanelActive)
-                TogglePanel();
+            _isPlaying = false;
         }
 
         private static void OnScrolling(float value)
         {
             _containerRect.anchoredPosition = new Vector2(_containerRect.anchoredPosition.x, value * (65f * _requestList.Count) - 40f);
         }
-        
+
+
+        [HarmonyPatch(typeof(LevelSelectController), nameof(LevelSelectController.Start))]
+        [HarmonyPostfix]
+        public static void StartBot(LevelSelectController __instance, int ___songindex)
+        {
+            if (!_isInitialized) Initialize();
+
+            _songSelectInstance = __instance;
+            _songIndex = ___songindex;
+            _isPlaying = false;
+        }
+
+        [HarmonyPatch(typeof(GameController), nameof(GameController.Start))]
+        [HarmonyPostfix]
+        public static void SetCurrentSong()
+        {
+            _songSelectInstance = null;
+            _isPlaying = true;
+            var track = TrackLookup.lookup(GlobalVariables.chosen_track_data.trackref);
+            var songHash = SongDataHelper.GetSongHash(track);
+            Plugin.Instance.StartCoroutine(TootTallyAPIService.GetHashInDB(songHash, track is CustomTrack, id => _currentSongID = id));
+            Remove(GlobalVariables.chosen_track_data.trackref);
+        }
+
+        [HarmonyPatch(typeof(PointSceneController), nameof(PointSceneController.Start))]
+        [HarmonyPostfix]
+        public static void ResetCurrentSong()
+        {
+            _isPlaying = false;
+        }
+
+        [HarmonyPatch(typeof(LevelSelectController), nameof(LevelSelectController.advanceSongs))]
+        [HarmonyPostfix]
+        public static void UpdateInstance(LevelSelectController __instance, int ___songindex)
+        {
+            _songSelectInstance = __instance;
+            _songIndex = ___songindex;
+        }
+
+        [HarmonyPatch(typeof(GameObjectFactory), nameof(GameObjectFactory.OnHomeControllerInitialize))]
+        [HarmonyPostfix]
+        public static void InitializeRequestPanel() => Initialize();
+
+        [HarmonyPatch(typeof(HomeController), nameof(HomeController.Start))]
+        [HarmonyPostfix]
+        public static void DeInitialize()
+        {
+            _songSelectInstance = null;
+        }
+
+        [HarmonyPatch(typeof(LevelSelectController), nameof(LevelSelectController.clickBack))]
+        [HarmonyPrefix]
+        private static bool OnClickBackSkipIfPanelActive() => ShouldScrollSongs();
+
+        [HarmonyPatch(typeof(LevelSelectController), nameof(LevelSelectController.clickNext))]
+        [HarmonyPrefix]
+        private static bool OnClickNextSkipIfScrollWheelUsed() => ShouldScrollSongs();
+
+        [HarmonyPatch(typeof(LevelSelectController), nameof(LevelSelectController.clickPrev))]
+        [HarmonyPrefix]
+        private static bool OnClickBackSkipIfScrollWheelUsed() => ShouldScrollSongs();
+
         public static void TogglePanel()
         {
-            _isPanelActive = songSelectInstance != null && !_isPanelActive;
-            _scrollableHandler.enabled = _isPanelActive && _requestRowList.Count > 6;
+            if (!_isInitialized) return;
+
+            IsPanelActive = _songSelectInstance != null && !IsPanelActive;
+            _scrollableHandler.enabled = IsPanelActive && _requestRowList.Count > 6;
             _isAnimating = true;
             if (_overlayPanel != null)
             {
                 _panelAnimationBG?.Dispose();
                 _panelAnimationFG?.Dispose();
-                var targetVector = _isPanelActive ? Vector2.one : Vector2.zero;
-                var animationTime = _isPanelActive ? 1f : 0.45f;
-                var secondDegreeAnimationFG = _isPanelActive ? new SecondDegreeDynamicsAnimation(1.75f, 1f, 0f) : new SecondDegreeDynamicsAnimation(3.2f, 1f, 0.25f);
-                var secondDegreeAnimationBG = _isPanelActive ? new SecondDegreeDynamicsAnimation(1.75f, 1f, 0f) : new SecondDegreeDynamicsAnimation(3.2f, 1f, 0.25f);
+                var targetVector = IsPanelActive ? Vector2.one : Vector2.zero;
+                var animationTime = IsPanelActive ? 1f : 0.45f;
+                var secondDegreeAnimationFG = IsPanelActive ? new SecondDegreeDynamicsAnimation(1.75f, 1f, 0f) : new SecondDegreeDynamicsAnimation(3.2f, 1f, 0.25f);
+                var secondDegreeAnimationBG = IsPanelActive ? new SecondDegreeDynamicsAnimation(1.75f, 1f, 0f) : new SecondDegreeDynamicsAnimation(3.2f, 1f, 0.25f);
                 _panelAnimationFG = TootTallyAnimationManager.AddNewScaleAnimation(_overlayPanel.transform.Find("FSLatencyPanel/LatencyFG").gameObject, targetVector, animationTime, secondDegreeAnimationFG);
                 _panelAnimationBG = TootTallyAnimationManager.AddNewScaleAnimation(_overlayPanel.transform.Find("FSLatencyPanel/LatencyBG").gameObject, targetVector, animationTime, secondDegreeAnimationBG, (sender) =>
                 {
                     _isAnimating = false;
-                    if (!_isPanelActive)
-                        _overlayPanel.SetActive(_isPanelActive);
+                    if (!IsPanelActive)
+                        _overlayPanel.SetActive(IsPanelActive);
                 });
-                if (_isPanelActive)
-                    _overlayPanel.SetActive(_isPanelActive);
+                if (IsPanelActive)
+                    _overlayPanel.SetActive(IsPanelActive);
             }
         }
 
@@ -144,7 +202,7 @@ namespace TootTallyTwitchIntegration
 
         public static void AddToBlockList(int id)
         {
-            _blockedList.Add(new BlockedRequests() { song_id = id });
+            _blockedList.Add(new BlockedRequests() { songID = id });
             TootTallyNotifManager.DisplayNotif($"Song #{id} blocked.");
             FileManager.SaveBlockedRequestsToFile(_blockedList);
         }
@@ -174,8 +232,7 @@ namespace TootTallyTwitchIntegration
             if (request == null) return;
 
             request.RemoveFromPanel();
-            RequestPanelManager.AddSongIDToHistory(request.request.song_id);
-            TootTallyNotifManager.DisplayNotif($"Fulfilled request from {request.request.requester}");
+            AddSongIDToHistory(request.request.songID);
         }
 
         public static void SetRequestRowPrefab()
@@ -209,16 +266,16 @@ namespace TootTallyTwitchIntegration
 
         public static void SetTrackToTrackref(string trackref)
         {
-            if (songSelectInstance == null) return;
-            for (int i = 0; i < songSelectInstance.alltrackslist.Count; i++)
+            if (_songSelectInstance == null) return;
+            for (int i = 0; i < _songSelectInstance.alltrackslist.Count; i++)
             {
-                if (songSelectInstance.alltrackslist[i].trackref == trackref)
+                if (_songSelectInstance.alltrackslist[i].trackref == trackref)
                 {
                     var attempts = 0;
-                    while (i - songIndex != 0 && songSelectInstance.songindex != i && attempts <= 3)
+                    while (i - _songIndex != 0 && _songSelectInstance.songindex != i && attempts <= 3)
                     {
                         // Only advance songs if we're not on the same song already
-                        songSelectInstance.advanceSongs(i - songIndex, true);
+                        _songSelectInstance.advanceSongs(i - _songIndex, true);
                         attempts++;
                     }
                     return;
@@ -229,14 +286,14 @@ namespace TootTallyTwitchIntegration
         public static void AddSongIDToHistory(int id) => _songIDHistory.Add(id);
         public static string GetSongIDHistoryString() => _songIDHistory.Count > 0 ? string.Join(", ", _songIDHistory) : "No songs history recorded";
 
-        public static string GetSongQueueIDString() => _requestList.Count > 0 ? string.Join(", ", _requestList.Select(x => x.song_id)) : "No songs requested";
+        public static string GetSongQueueIDString() => _requestList.Count > 0 ? string.Join(", ", _requestList.Select(x => x.songID)) : "No songs requested";
         public static string GetLastSongPlayed() => _songIDHistory.Count > 0 ? $"https://toottally.com/song/{_songIDHistory.Last()}" : "No song played";
 
-        public static bool IsDuplicate(int song_id) => _requestRowList.Any(x => x.request.song_id == song_id);
+        public static bool IsDuplicate(int songID) => _requestRowList.Any(x => x.request.songID == songID);
 
-        public static bool IsBlocked(int song_id) => _blockedList.Any(x => x.song_id == song_id);
+        public static bool IsBlocked(int songID) => _blockedList.Any(x => x.songID == songID);
 
-        public static bool ShouldScrollSongs() => !_isPanelActive && !_isAnimating;
+        public static bool ShouldScrollSongs() => !IsPanelActive && !_isAnimating;
 
         public static void UpdateTheme()
         {
@@ -248,6 +305,32 @@ namespace TootTallyTwitchIntegration
         public static void UpdateSaveRequestFile()
         {
             FileManager.SaveRequestsQueueToFile(_requestList);
+        }
+
+        [Serializable]
+        public class Request
+        {
+            public string requester;
+            public SerializableClass.SongDataFromDB songData;
+            public int songID;
+            public string date;
+        }
+
+        [Serializable]
+        public class BlockedRequests
+        {
+            public int songID;
+        }
+
+        public class UnprocessedRequest(string requester, int songId)
+        {
+            public string requester = requester;
+            public int songId = songId;
+        }
+
+        public class Notif
+        {
+            public string message;
         }
     }
 }
